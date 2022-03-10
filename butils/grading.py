@@ -4,6 +4,7 @@ import shutil
 import click
 import pandas
 from pandas import DataFrame
+from pandas.core.groupby import DataFrameGroupBy
 
 import files
 from rubrics import Rubric
@@ -19,15 +20,24 @@ FORMAT_TU_ID = re.compile(r'^([a-z]{2}\d{2}[a-zA-Z]{4}|[a-zA-Z]+|[a-zA-Z]+_[a-zA
               help='path to filtered moodle files')
 @click.option('--report', type=click.Path(), default='report.xlsx', help='path to submission report file')
 @click.option('--dictionary', type=click.Path(), default='mapping.csv', help='path to mapping file')
-def filter_rubrics(rubrics, rubrics_moodle, rubrics_moodle_filtered, report, dictionary):
+@click.option('--distribution', type=click.BOOL, default=False, help='show distribution of differences')
+def filter_rubrics(rubrics, rubrics_moodle, rubrics_moodle_filtered, report, dictionary, distribution):
     f_dictionary = load_name_id_mapping(dictionary)
     points_rubrics = load_from_rubrics(rubrics)
     points_report = load_points_from_export(report, f_dictionary)
     points = points_rubrics.join(other=points_report, lsuffix='_rubrics', rsuffix='_report')
-    points = points[points['points_rubrics'] > points['points_report']]
-    for entry in points['file']:
+    points['difference'] = points['points_rubrics'] - points['points_report']
+    show_distribution(distribution, points)
+    points_max = points[points['points_rubrics'] > points['points_report']]
+    for entry in points_max['file']:
         shutil.copy(f'{rubrics_moodle}/{entry}', f'{rubrics_moodle_filtered}/{entry}')
-    click.echo(f'Success! {len(points)} rubrics filtered.')
+    click.echo(f'Success! {len(points_max)} rubrics filtered.')
+
+
+def show_distribution(distribution: bool, frame: DataFrame):
+    differences = DataFrame(columns=['count'], data=frame.groupby(['difference']).size())
+    if distribution:
+        click.echo(differences)
 
 
 def load_from_rubrics(rubrics_path: str) -> DataFrame:
